@@ -11,10 +11,9 @@ use crate::{
     error::{Error, Result},
     peer::PeerUtils,
 };
-use bytes::Bytes;
 use sn_messaging::{
     node::{Peer, SrcAuthority},
-    MessageId, SrcLocation,
+    SrcLocation,
 };
 use std::net::SocketAddr;
 use xor_name::XorName;
@@ -33,9 +32,6 @@ pub trait SrcAuthorityUtils {
 
     // If this location is `Node`, returns the corresponding `Peer` with `addr`. Otherwise error.
     fn peer(&self, addr: SocketAddr) -> Result<Peer>;
-
-    // Use signature as id
-    fn id(&self) -> MessageId;
 }
 
 impl SrcAuthorityUtils for SrcAuthority {
@@ -65,24 +61,6 @@ impl SrcAuthorityUtils for SrcAuthority {
             SrcAuthority::Node { public_key, .. } => Ok(Peer::new(crypto::name(public_key), addr)),
             SrcAuthority::Section { .. } | SrcAuthority::BlsShare { .. } => {
                 Err(Error::InvalidSrcLocation)
-            }
-        }
-    }
-
-    // Use signature as id
-    fn id(&self) -> MessageId {
-        match self {
-            SrcAuthority::Node { signature, .. } => {
-                MessageId::from_content(&Bytes::copy_from_slice(&signature.to_bytes()))
-                    .unwrap_or_default()
-            }
-            SrcAuthority::BlsShare { proof_share, .. } => MessageId::from_content(
-                &Bytes::copy_from_slice(&proof_share.signature_share.0.to_bytes()),
-            )
-            .unwrap_or_default(),
-            SrcAuthority::Section { proof, .. } => {
-                MessageId::from_content(&Bytes::copy_from_slice(&proof.signature.to_bytes()))
-                    .unwrap_or_default()
             }
         }
     }

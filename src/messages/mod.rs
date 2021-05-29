@@ -18,7 +18,6 @@ use crate::{
     section::{SectionKeyShare, SectionUtils},
 };
 use bls_signature_aggregator::{Proof, ProofShare};
-use bytes::Bytes;
 use secured_linked_list::{error::Error as SecuredLinkedListError, SecuredLinkedList};
 use serde::Serialize;
 use sn_messaging::{
@@ -31,8 +30,8 @@ use xor_name::XorName;
 
 /// Message sent over the network.
 pub trait RoutingMsgUtils {
-    /// Deserialize the message checking its signature is valid. Only called on message receipt.
-    fn from_bytes(msg_bytes: Bytes) -> Result<RoutingMsg>;
+    /// Check the signature is valid. Only called on message receipt.
+    fn check_signature(msg: &RoutingMsg) -> Result<()>;
 
     /// Creates a signed message where signature is assumed valid.
     fn new_signed(
@@ -117,10 +116,8 @@ pub trait RoutingMsgUtils {
 }
 
 impl RoutingMsgUtils for RoutingMsg {
-    /// Deserialize the message checking its signature is valid. Only called on message receipt.
-    fn from_bytes(msg_bytes: Bytes) -> Result<RoutingMsg> {
-        let msg = RoutingMsg::from(msg_bytes).map_err(|_| Error::InvalidMessage)?;
-
+    /// Check the signature is valid. Only called on message receipt.
+    fn check_signature(msg: &RoutingMsg) -> Result<()> {
         let signed_bytes = bincode::serialize(&SignableView {
             dst: &msg.dst,
             variant: &msg.variant,
@@ -169,7 +166,7 @@ impl RoutingMsgUtils for RoutingMsg {
             }
         }
 
-        Ok(msg)
+        Ok(())
     }
 
     /// Creates a signed message where signature is assumed valid.
@@ -179,8 +176,18 @@ impl RoutingMsgUtils for RoutingMsg {
         variant: Variant,
         proof_chain: Option<SecuredLinkedList>,
     ) -> Result<RoutingMsg, Error> {
+        // Create message id from src authority signature
+        let id = match &src {
+            SrcAuthority::Node { signature, .. } => MessageId::from_content(signature),
+            SrcAuthority::BlsShare { proof_share, .. } => {
+                MessageId::from_content(&proof_share.signature_share.0)
+            }
+            SrcAuthority::Section { proof, .. } => MessageId::from_content(&proof.signature),
+        }
+        .unwrap_or_default();
+
         let msg = RoutingMsg {
-            id: src.id(),
+            id,
             src,
             dst,
             aggregation: Aggregation::None,

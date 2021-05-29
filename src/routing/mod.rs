@@ -30,6 +30,7 @@ use crate::{
     crypto,
     error::Result,
     event::{Elders, Event, NodeElderChange},
+    messages::RoutingMsgUtils,
     network::NetworkUtils,
     node::Node,
     peer::PeerUtils,
@@ -42,7 +43,7 @@ use itertools::Itertools;
 use secured_linked_list::SecuredLinkedList;
 use sn_messaging::{
     client::ClientMsg,
-    node::{Peer, SectionAuthorityProvider},
+    node::{Peer, RoutingMsg, SectionAuthorityProvider},
     DestInfo, DstLocation, EndUser, Itinerary, MessageType, WireMsg,
 };
 use std::{
@@ -518,6 +519,14 @@ async fn handle_message(dispatcher: Arc<Dispatcher>, bytes: Bytes, sender: Socke
             let _ = task::spawn(dispatcher.handle_commands(command));
         }
         MessageType::Routing { msg, dest_info } => {
+            if let Err(err) = RoutingMsg::check_signature(&msg) {
+                error!(
+                    "Discarding message received ({:?}) due to invalid signature: {:?}",
+                    msg.id, err
+                );
+                return;
+            }
+
             let command = Command::HandleMessage {
                 message: msg,
                 sender: Some(sender),
